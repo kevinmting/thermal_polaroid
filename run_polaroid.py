@@ -6,27 +6,51 @@ from PIL import Image
 import pdb
 import signal
 import os
+import socket
+import sys
+import subprocess
+
+daemon_process = None
+client_socket = None
 
 def main():
     #CONSTANTS
     TRIGGER_PIN = 4
     #PICTURE_PATH = "TEST.BMP"
-    PICTURE_PATH = "/home/pi/tmp.jpg"
+    #PICTURE_PATH = "/home/pi/tmp.jpg"
+    PICTURE_PATH = '/home/pi/src/polaroid/picam_pics/polaroid_pic.jpg'
     PRINTER_WIDTH = 384
     PRINTER_HEIGHT = 384
     LED_PIN = 25
 
         
-    #SETUP
+    #GPIO SETUP
     GPIO.setmode(GPIO.BCM)
     GPIO.setup(TRIGGER_PIN, GPIO.IN, pull_up_down=GPIO.PUD_UP)
     
     GPIO.setup(LED_PIN, GPIO.OUT)
 
+    #PRINTER SETUP
     printer = Adafruit_Thermal("/dev/serial0", 19200, timeout=5)
 
-    fastcamdir = '/home/pi/src/rasperry-pi-userland/host_applications/linux/apps/raspicam/raspifastcamd_scripts/'
-    call(["sh", "start_camd.sh"])
+
+    #CAMERA DAEMON SETUP
+    global daemon_process
+    daemon_process = subprocess.Popen(['python','picam-daemon.py'])
+    #call(["python","picam-daemon.py"])
+    time.sleep(0.5)
+
+    #CAMERA CLIENT SETUP
+    HOST = '127.0.0.1'
+    PORT = 10000
+    global client_socket
+    client_socket = socket.socket()
+    client_socket.connect((HOST, PORT))
+    print "socket details:\n"
+    print client_socket
+
+    #fastcamdir = '/home/pi/src/rasperry-pi-userland/host_applications/linux/apps/raspicam/raspifastcamd_scripts/'
+    #call(["sh", "start_camd.sh"])
 
     blink_led(LED_PIN, 10, 0.2)
 
@@ -35,24 +59,26 @@ def main():
         input_state = GPIO.input(TRIGGER_PIN)
         if input_state == False:
             
-            try:
-                call(["rm", PICTURE_PATH])
-                print("Successfully deleted " + PICTURE_PATH)
-            except:
-                print("Could not delete " + PICTURE_PATH)
-            print('Button pressed')
-            
+            #try:
+            #    call(["rm", PICTURE_PATH])
+            #    print("Successfully deleted " + PICTURE_PATH)
+            #except:
+            #    print("Could not delete " + PICTURE_PATH)
+            #print('Button pressed')
+
             blink_led(LED_PIN, 2, 0.2)
 
             print "capturing image"
             #call(["raspistill","-v","-n","-o",PICTURE_PATH])
-            call(["sh", "do_caputure.sh"])
+            #call(["sh", "do_caputure.sh"])
+            client_socket.send("snap")
+
+            #check if user did a long press --> if so power off
             time.sleep(1)
-            
             input_state = GPIO.input(TRIGGER_PIN)
             if input_state == False:
-                print('SHUTTING DOWN')
-                call(["sh", "stop_camd.sh"])    
+                exit_gracefully()
+                #call(["sh", "stop_camd.sh"])    
                 blink_led(LED_PIN, 4, 0.2)    
                 call(["sudo", "poweroff"])
             else:
@@ -88,11 +114,24 @@ def blink_led(LED_PIN, n_times, t_sec):
 def sigint_handler(signum, frame):
     signal.signal(signal.SIGINT, original_sigint)
     print("Stop pressing ctrl+c!")
-    call(["sh", "stop_camd.sh"])
+    #call(["sh", "stop_camd.sh"])
+    exit_gracefully()
     sys.exit(1)
     
     # restore the handler here. 
     signal.signal(signal.SIGINT, sigint_handler)
+
+def exit_gracefully():
+    print "shutting down gracefully"
+
+    daemon_process.kill()
+    print "successfully killed camera daemon process"
+
+    client_socket.close()
+    print "succesfully closed camera client socket"
+
+    print "done shutting down gracefully"
+
 
 if __name__ == "__main__":
     original_sigint = signal.getsignal(signal.SIGINT)
@@ -104,3 +143,4 @@ if __name__ == "__main__":
     os.chdir(fullpath)
     
     main()
+o

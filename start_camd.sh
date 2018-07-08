@@ -11,12 +11,13 @@ if [ -e $pid_file ]; then
 fi
 
 #output_file=${1-~/tmppp_%d.jpg}
-output_file=${1-~/tmp.jpg}
+#output_file=${1-~/tmp.jpg}
+output_file='/home/pi/tmp.jpg'
 
 echo "Output will be written to $output_file"
 
 #This will make pictures of 200x200px feel free to change.
-./raspifastcamd -w 200 -h 200 -o $output_file &
+./raspifastcamd -w 384 -h 384 -o $output_file &
 pid=$!
 
 echo "Pid of raspifastcamd is $pid"
